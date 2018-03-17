@@ -56,9 +56,7 @@ try {
             }
 
             stage('Cleanup') {
-                sh "docker image rm ${repository}:${tag}" +
-                        " ${env.DOCKER_REGISTRY_HOST}/${repository}:${tag}" +
-                        " ${env.DOCKER_REGISTRY_HOST}/${repository}"
+                sh "docker image rm ${repository}:${tag}" 
             }
 
         }
