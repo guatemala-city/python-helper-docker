@@ -1,49 +1,47 @@
 #!/usr/bin/env groovy
 try {
-    node('master') {
+    node('docker') {
 
-
-        def repository  = sh(script: 'cat repository.txt', returnStdout: true).trim()
-        def tag         = sh(script: 'cat tag.txt', returnStdout: true).trim()
-        def commit_id   = sh(script: 'shell git rev-parse HEAD', returnStdout: true).trim()
-
-        def docker_registry_host = env.DOCKER_REGISTRY_HOST ?: 'registry.hub.docker.com'
+        def docker_registry_host = env.DOCKER_REGISTRY_HOST ?: 'index.docker.io/v2/'
         def docker_registry_credentials_id = env.DOCKER_REGISTRY_CREDENTIALS_ID?: 'dockerhub_cred'
-
         def uniqueWorkspace = "build-" +env.BUILD_ID
 
+        def commit_id
         def image
+        def repository
+        def tag
+
+        stage('Checkout') {
+            dir(uniqueWorkspace){
+                checkout scm
+                commit_id   = sh(script: 'git rev-parse HEAD', returnStdout: true).trim()
+                repository  = sh(script: 'cat repository.txt', returnStdout: true).trim()
+                tag         = sh(script: 'cat tag.txt', returnStdout: true).trim()
+            }
+        }
 
         withEnv(["DOCKER_REGISTRY_HOST=${docker_registry_host}",
                  "DOCKER_REGISTRY_CREDENTIALS_ID=${docker_registry_credentials_id}",
                  "COMMIT_ID=${commit_id}",
                  "WORKDIR=${uniqueWorkspace}"]) {
 
-
-            stage('Checkout') {
-                dir(uniqueWorkspace){
-                    checkout scm
-                }
-
-            }
-
-
             stage('Build') {
+                sh 'printenv'
+
                 if (!env.BRANCH_NAME.toLowerCase().startsWith("master"))
-                    tag = tag + '+' + env.BUILD_ID
+                    tag = tag + '-' + env.BUILD_ID
 
-                imgae = docker.build("${repository}:${tag}",
-                        "--build-arg BRANCH_NAME='${env.BRANCH_NAME}' " +
-                                "--build-arg COMMIT_ID='${env.COMMIT_ID}' " +
-                                "--build-arg BUILD_ID='${env.BUILD_ID}'" +
-                                "--build-arg JENKINS_URL='${env.JENKINS_URL}'" +
-                                "--build-arg JOB_NAME='${env.JOB_NAME}' " +
-                                "--build-arg NODE_NAME='${env.NODE_NAME}'" +
-                                " '${WORKDIR}/'"
-                )
+                sh(script: "docker build -t ${repository}:${tag}" +
+                        " --build-arg BRANCH_NAME='${env.BRANCH_NAME}'" +
+                        " --build-arg COMMIT_ID='${env.COMMIT_ID}' " +
+                        " --build-arg BUILD_ID='${env.BUILD_ID}'  " +
+                        " --build-arg JENKINS_URL='${env.JENKINS_URL}' " +
+                        " --build-arg JOB_NAME='${env.JOB_NAME}' " +
+                        " --build-arg NODE_NAME='${env.NODE_NAME}' " +
+                        " '${WORKSPACE}/${WORKDIR}/'", returnStdout: true).trim()
+
+                image = docker.image(repository + ':' + tag)
             }
-
-
 
             docker.withRegistry("https://${env.DOCKER_REGISTRY_HOST}", env.DOCKER_REGISTRY_CREDENTIALS_ID) {
 
